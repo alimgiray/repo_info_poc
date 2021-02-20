@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message ChangedFile {
+  string file_name = 1;
+  string language = 2;
+  int64 insertions = 3;
+  int64 deletions = 4;
+}
+
+message ProtoCommit {
+  string repo_name = 1;
+  string author_name = 2;
+  string author_email = 3;
+  repeated ChangedFile changed_files = 4;
+}
