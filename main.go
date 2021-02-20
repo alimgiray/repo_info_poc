@@ -7,17 +7,21 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	commit "github.com/alimgiray/repo_info_poc/proto"
+	"github.com/golang/protobuf/proto"
 	"io"
 	"log"
 	"os"
 	"time"
 )
 
-var jsonfile = "./repo.json"
-var binaryfile = "./repo.bin"
+const jsonfile = "./repo.json"
+const binaryfile = "./repo.bin"
+const protofile = "./repo.protobinary"
 
 func main() {
 
+	// JSON
 	c := make(chan Commit)
 	go CreateRepo(c)
 
@@ -32,6 +36,7 @@ func main() {
 	log.Printf("Reading JSON took %s", elapsed)
 	log.Printf("JSON file size: %s", fileSize(jsonfile))
 
+	// Binary
 	c = make(chan Commit)
 	go CreateRepo(c)
 
@@ -45,6 +50,21 @@ func main() {
 	elapsed = time.Since(start)
 	log.Printf("Reading binary took %s", elapsed)
 	log.Printf("Binary file size: %s", fileSize(binaryfile))
+
+	// Proto
+	c = make(chan Commit)
+	go CreateRepo(c)
+
+	start = time.Now()
+	writeProto(c)
+	elapsed = time.Since(start)
+	log.Printf("Writing proto took %s", elapsed)
+
+	start = time.Now()
+	readProto()
+	elapsed = time.Since(start)
+	log.Printf("Reading proto took %s", elapsed)
+	log.Printf("Proto file size: %s", fileSize(protofile))
 }
 
 func writeJSON(c <-chan Commit) {
@@ -74,6 +94,21 @@ func writeBinary(c <-chan Commit) {
 	}
 }
 
+func writeProto(c <-chan Commit) {
+	file, _ := os.Create(protofile)
+	defer file.Close()
+
+	b := make([]byte, 4)
+	for commit := range c {
+		pb, _ := proto.Marshal(ProtoFromCommit(commit))
+
+		binary.LittleEndian.PutUint32(b, uint32(len(pb)))
+
+		file.Write(b)
+		file.Write(pb)
+	}
+}
+
 func readJSON() {
 	file, _ := os.Open(jsonfile)
 	defer file.Close()
@@ -85,8 +120,8 @@ func readJSON() {
 		if err != nil || err == io.EOF {
 			break
 		}
-		var commit Commit
-		json.Unmarshal([]byte(line), &commit)
+		var c Commit
+		json.Unmarshal([]byte(line), &c)
 	}
 }
 
@@ -98,12 +133,36 @@ func readBinary() {
 	dec := gob.NewDecoder(reader)
 
 	for {
-		var commit Commit
-		err := dec.Decode(&commit)
+		var c Commit
+		err := dec.Decode(&c)
 		if err == io.EOF {
 			break
 		}
 		// do something with commit
+	}
+}
+
+func readProto() {
+	file, _ := os.Open(protofile)
+	defer file.Close()
+
+	size := make([]byte, 4)
+	for {
+		var c Commit
+
+		_, err := file.Read(size)
+		if err == io.EOF {
+			break
+		}
+
+		message := make([]byte, binary.LittleEndian.Uint32(size))
+		_, _ = file.Read(message)
+
+		pb := &commit.ProtoCommit{}
+		_ = proto.Unmarshal(message, pb)
+
+		c = CommitFromProto(pb)
+		_ = c
 	}
 }
 
